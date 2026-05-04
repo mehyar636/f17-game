@@ -523,12 +523,16 @@ function resizeCanvas() {
     view.offsetY = padTop + (playH - CONFIG.pitch.h * view.scale) / 2;
   } else {
     showRotate(false);
-    view.scale = fitScale;
+    // Hybrid fill: scale up to fill the screen, but cap the crop so playfield
+    // edges (goals, sidelines) stay visible. Cap = 1.18× fitScale, which on
+    // typical desktop 16:9 (1.78) and iPhone landscape (~2.16) eliminates
+    // black bars while keeping crop under ~10% per side.
+    const maxScale = fitScale * 1.18;
+    view.scale = Math.min(fillScale, maxScale);
     const scaledPitchW = CONFIG.pitch.w * view.scale;
     const scaledPitchH = CONFIG.pitch.h * view.scale;
-    // Center pitch horizontally in screen, vertically in safe area between HUD bars
     view.offsetX = (sw - scaledPitchW) / 2;
-    view.offsetY = padTop + (playH - scaledPitchH) / 2;
+    view.offsetY = (sh - scaledPitchH) / 2;
   }
 }
 

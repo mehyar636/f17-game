@@ -32,8 +32,10 @@ export class DribbleDrill extends DrillBase {
       const cones = [this.add.image(x, y - half, 'm_cone'), this.add.image(x, y + half, 'm_cone')].map(c => c.setScale(1.3 / R).setDepth(c.y));
       const disc = this.add.image(x, y, 'm_disc').setScale(1.4 / R).setDepth(1).setAlpha(0.35);
       const num = this.add.text(x, y, String(i + 1), { fontFamily: '"Barlow Condensed", Arial Black', fontSize: '26px', color: '#ffffff' }).setOrigin(0.5).setDepth(1).setAlpha(0.6);
-      this.gates.push({ x, y, half, cones, disc, num, objs: [...cones, disc, num], done: false, hit: [false, false] });
+      const props = [{ kind: 'gate', x, y, n: i + 1, cur: false, done: false }, { kind: 'cone', x, y: y - half, hit: false }, { kind: 'cone', x, y: y + half, hit: false }];
+      this.gates.push({ x, y, half, cones, disc, num, props, objs: [...cones, disc, num], done: false, hit: [false, false] });
     }
+    this.props3d = this.gates.flatMap(g => g.props);
     this.current = 0;
     this.highlight();
     const p = this.player;
@@ -46,6 +48,7 @@ export class DribbleDrill extends DrillBase {
     this.gates.forEach((g, i) => {
       this.tweens.killTweensOf(g.disc);
       const cur = i === this.current;
+      g.props[0].cur = cur; g.props[0].done = g.done;
       g.disc.setAlpha(cur ? 0.95 : g.done ? 0.15 : 0.35).setTint(cur ? 0xf1c40f : g.done ? 0x22c55e : 0xffffff).setScale(1.4 / R);
       g.num.setAlpha(cur ? 1 : 0.5).setColor(cur ? '#f1c40f' : '#ffffff');
       if (cur) this.tweens.add({ targets: g.disc, scale: 1.7 / R, duration: 500, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
@@ -60,6 +63,7 @@ export class DribbleDrill extends DrillBase {
     this.shotLive = true; this.shotT = 2.2;
   }
   onPass(dx, dy) { this.kick(dx, dy, 420, 0); }
+  cam3d() { const p = this.player, b = this.ball, far = this.finishLive ? 0.35 : 0; return { x: (p.x * 0.6 + b.x * 0.4) * (1 - far) + GOAL_X * far + 60, y: p.y * 0.6 + b.y * 0.4, dist: 27, h: 12 }; }
   onBallOut() { this.resetBallToPlayer(); if (this.shotLive) { this.shotLive = false; this.praise('MISSED!', 'NEXT LAP'); this.nextLap(); } }
 
   nextLap() { this.laps++; this.time.delayedCall(500, () => { if (this.phase === 'play') this.buildCourse(); }); }
@@ -72,7 +76,7 @@ export class DribbleDrill extends DrillBase {
       // cones knocked?
       g.cones.forEach((c, i) => {
         if (!g.hit[i] && (dist(c, b) < 20 || dist(c, p) < 24)) {
-          g.hit[i] = true;
+          g.hit[i] = true; g.props[i + 1].hit = true;
           this.tweens.add({ targets: c, angle: { from: -25, to: 25 }, duration: 90, yoyo: true, repeat: 3 });
           c.setTint(0xef4444);
           this.score = Math.max(0, this.score - 25); this.scoreT.setText(String(this.score)); this.updateStarHud();
@@ -86,13 +90,13 @@ export class DribbleDrill extends DrillBase {
         this.addScore(clean ? 100 : 50, g.x, g.y - 20, clean ? undefined : null);
         if (clean) { this.good(); }
         this.current++;
-        if (this.current >= this.gates.length) { this.finishLive = true; this.praise('NOW SHOOT!', 'HOLD SPACE / SHOOT'); this.gates.forEach(x => this.tweens.killTweensOf(x.disc)); }
+        if (this.current >= this.gates.length) { this.finishLive = true; g.props[0].cur = false; g.props[0].done = true; this.praise('NOW SHOOT!', 'HOLD SPACE / SHOOT'); this.gates.forEach(x => this.tweens.killTweensOf(x.disc)); }
         else this.highlight();
       } else if (b.x > g.x + 90) {
         // skipped the gate
         g.done = true; this.praise('MISSED GATE', 'GO THROUGH THE GOLD ONE'); sfx.wall();
         this.current++;
-        if (this.current >= this.gates.length) { this.finishLive = true; this.praise('NOW SHOOT!', 'HOLD SPACE / SHOOT'); }
+        if (this.current >= this.gates.length) { this.finishLive = true; g.props[0].cur = false; g.props[0].done = true; this.praise('NOW SHOOT!', 'HOLD SPACE / SHOOT'); }
         else this.highlight();
       }
     }
@@ -100,7 +104,7 @@ export class DribbleDrill extends DrillBase {
       this.shotT -= dt;
       if (this.inRightGoal()) {
         this.shotLive = false; this.finishLive = false;
-        this.fx.confetti.explode(80, b.x, b.y); sfx.net(); sfx.cheer(0.8);
+        this.confettiAt(b.x, b.y, 80); sfx.net(); sfx.cheer(0.8);
         this.addScore(b.fire ? 400 : 250, b.x - 60, b.y, b.fire ? 'SUPER FINISH!' : 'LAP COMPLETE + GOAL!');
         this.nextLap();
       } else if (this.shotT <= 0 || b.speed < 40) { this.shotLive = false; this.praise('TRY AGAIN', 'GET THE BALL AND SHOOT'); this.resetBallToPlayer(); }

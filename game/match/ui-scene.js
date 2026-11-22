@@ -317,10 +317,11 @@ export class UIScene extends Phaser.Scene {
     this.ftCoins = this.add.text(-24, 118, '+0 COINS', { fontFamily: FONT, fontSize: '20px', color: '#fde047' }).setOrigin(0, 0.5);
     this.ftObjs = this.add.text(-270, 150, '', { fontFamily: FONT_R, fontSize: '12px', color: 'rgba(255,255,255,0.7)', lineSpacing: 2 }).setOrigin(0, 0.5);
     const mkBtn = (x, label, color, tc, cb) => {
-      const bbg = this.add.graphics(); bbg.fillStyle(color); bbg.fillRoundedRect(-110, -22, 220, 44, 22);
+      const bbg = this.add.graphics(); bbg.fillStyle(color); bbg.fillRoundedRect(-110, -26, 220, 52, 26);
       const bt = this.add.text(0, 0, label, { fontFamily: FONT, fontSize: '15px', color: tc }).setOrigin(0.5);
-      const c = this.add.container(x, 140, [bbg, bt]).setSize(220, 44).setInteractive({ useHandCursor: true })
-        .on('pointerup', cb).on('pointerover', () => c.setScale(1.05)).on('pointerout', () => c.setScale(1));
+      const c = this.add.container(x, 140, [bbg, bt]).setSize(232, 56).setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => { sfx.ensure(); c.setScale(0.94); }).on('pointerup', () => { c.setScale(1); cb(); })
+        .on('pointerover', () => c.setScale(1.05)).on('pointerout', () => c.setScale(1));
       return c;
     };
     const b1 = mkBtn(-125, 'CONTINUE', 0x22c55e, '#04170a', () => this.toMenu('Career'));
@@ -373,9 +374,13 @@ export class UIScene extends Phaser.Scene {
     const mkBtn = (name, label, r, color) => {
       const bg = this.add.circle(0, 0, r, color, 0.82).setStrokeStyle(3, 0xffffff, 0.5);
       const t = this.add.text(0, 0, label, { fontFamily: FONT, fontSize: `${Math.round(r * 0.36)}px`, color: '#ffffff' }).setOrigin(0.5);
-      const c = this.add.container(0, 0, [bg, t]).setSize(r * 2, r * 2).setInteractive();
-      const send = (down) => { sfx.ensure(); bg.setAlpha(down ? 1 : 0.82); c.setScale(down ? 0.92 : 1); this.game.events.emit(EV.TOUCH, { type: 'btn', name, down }); };
-      c.on('pointerdown', () => send(true)); c.on('pointerup', () => send(false)); c.on('pointerout', () => send(false));
+      // generous circular hit area; the button is released only by the finger that pressed it
+      const c = this.add.container(0, 0, [bg, t]).setSize(r * 2, r * 2).setInteractive(new Phaser.Geom.Circle(r, r, r + 14), Phaser.Geom.Circle.Contains);
+      let by = -1;
+      const send = (down) => { sfx.ensure(); bg.setAlpha(down ? 1 : 0.82); c.setScale(down ? 0.9 : 1); this.game.events.emit(EV.TOUCH, { type: 'btn', name, down }); };
+      c.on('pointerdown', (p) => { by = p.id; send(true); });
+      const up = (p) => { if (by === p.id) { by = -1; send(false); } };
+      c.on('pointerup', up); c.on('pointerout', up); this.input.on('pointerup', up); this.input.on('pointerupoutside', up);
       this.btns.push({ c, name });
     };
     mkBtn('shoot', 'SHOOT', 50, 0xdc2626); mkBtn('pass', 'PASS', 40, 0x2563eb);
@@ -392,8 +397,9 @@ export class UIScene extends Phaser.Scene {
       const m = Math.hypot(dx, dy), R = 58;
       if (m > R) { dx = dx / m * R; dy = dy / m * R; }
       this.joyKnob.setPosition(this.joyBase.x + dx, this.joyBase.y + dy);
-      const dead = 0.12;
-      this.game.events.emit(EV.TOUCH, { type: 'axis', x: Math.abs(dx / R) < dead ? 0 : dx / R, y: Math.abs(dy / R) < dead ? 0 : dy / R });
+      // radial dead zone, then full speed from 60% of the throw so small thumbs still sprint in a straight line
+      const mag = Math.min(1, m / R), out = mag < 0.14 ? 0 : Math.min(1, (mag - 0.14) / 0.46);
+      this.game.events.emit(EV.TOUCH, { type: 'axis', x: (dx / (mag * R || 1)) * out, y: (dy / (mag * R || 1)) * out });
     });
     const end = (p) => {
       if (p.id !== this.joyId) return;

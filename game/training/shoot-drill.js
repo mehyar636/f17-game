@@ -22,7 +22,8 @@ export class ShootDrill extends DrillBase {
       { y: CY - GOAL_W / 2 + 32, pts: 150, name: 'TOP CORNER!' },
       { y: CY + GOAL_W / 2 - 32, pts: 150, name: 'BOTTOM CORNER!' },
       { y: CY, pts: 80, name: 'DOWN THE MIDDLE!' },
-    ].map(z => ({ ...z, img: this.add.image(GOAL_X - 4, z.y, 'm_target').setScale(1 / R).setDepth(5001).setAlpha(0.35) }));
+    ].map(z => ({ ...z, prop: { kind: 'target', x: GOAL_X, y: z.y, on: false }, img: this.add.image(GOAL_X - 4, z.y, 'm_target').setScale(1 / R).setDepth(5001).setAlpha(0.35) }));
+    this.props3d = this.zones.map(z => z.prop);
     this.pickTarget();
     this.placeForShot(true);
     this.shotLive = false; this.shotT = 0; this.streak = 0;
@@ -33,6 +34,7 @@ export class ShootDrill extends DrillBase {
     this.target = options[Math.floor(Math.random() * options.length)];
     this.zones.forEach(z => { this.tweens.killTweensOf(z.img); z.img.setAlpha(0.3).setScale(1 / R).setTint(0xffffff); });
     this.target.img.setAlpha(1).setTint(0xf1c40f);
+    this.zones.forEach(z => { z.prop.on = z === this.target; });
     this.tweens.add({ targets: this.target.img, scale: 1.35 / R, duration: 500, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
   }
 
@@ -41,6 +43,7 @@ export class ShootDrill extends DrillBase {
     this.player.setPosition(x, y); this.player.vx = 0; this.player.vy = 0; this.player.facing = 0;
     this.ball.place(x + 22, y); this.ball.owner = this.player;
     if (!first) this.puff(x, y + 10, 3);
+    this.dived = false;
   }
 
   onShoot(power, aimY) {
@@ -56,6 +59,7 @@ export class ShootDrill extends DrillBase {
   }
 
   onPass(dx, dy) { this.onShoot(0.55, dy); void dx; }
+  cam3d() { const p = this.player; return { x: p.x * 0.5 + GOAL_X * 0.5, y: p.y * 0.6 + CY * 0.4, dist: 29, h: 11 }; }
   onBallOut() { this.endShot(0, this.ball.z >= 105 && Math.abs(this.ball.y - CY) < GOAL_W / 2 ? 'OVER THE BAR!' : 'WIDE!'); }
 
   endShot(points, label, x, y) {
@@ -75,6 +79,7 @@ export class ShootDrill extends DrillBase {
       const t = Phaser.Math.Clamp((gk.x - b.x) / (b.vx || 1), 0, 1.2);
       ty = Phaser.Math.Clamp(b.y + b.vy * t, CY - GOAL_W / 2 + 10, CY + GOAL_W / 2 - 10);
       speed = 400;
+      if (!this.dived && t < 0.42 && Math.abs(ty - gk.y) > 30) { this.dived = true; gk.play('dive', Math.sign(ty - gk.y)); }
     }
     gk.steer(GOAL_X - 36, ty, speed, dt, 9);
     gk.lockFacing = true; gk.facing = Math.PI;
@@ -91,7 +96,7 @@ export class ShootDrill extends DrillBase {
         const hit = this.zones.find(z => Math.abs(b.y - z.y) < 40);
         const onTarget = hit === this.target;
         const pts = onTarget ? this.target.pts * (b.fire ? 2 : 1) : 50;
-        this.fx.confetti.explode(onTarget ? 60 : 20, b.x, b.y);
+        this.confettiAt(b.x, b.y, onTarget ? 60 : 20);
         sfx.net(); sfx.cheer(onTarget ? 0.8 : 0.4);
         this.endShot(pts, onTarget ? (b.fire ? 'SUPER ' + this.target.name : this.target.name) : 'GOAL!', b.x - 60, b.y);
         return;

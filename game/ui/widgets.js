@@ -24,7 +24,7 @@ export function crest(scene, x, y, r, team) {
 /** Front-facing portrait of the hero, F17 (#17, green and gold). Returns a container centred on the chest. */
 export function heroPortrait(scene, x, y, s = 1) {
   const g = scene.add.graphics();
-  const SKIN = 0xd9a066, SKIN_D = 0xb97f4a, HAIR = 0x1f1410, GREEN = 0x15803d, GREEN_L = 0x22c55e, GREEN_D = 0x0b3d1f, GOLD = 0xf1c40f;
+  const SKIN = 0xf1c6a0, SKIN_D = 0xd9a380, HAIR = 0xf2c94c, GREEN = 0x15803d, GREEN_L = 0x22c55e, GREEN_D = 0x0b3d1f, GOLD = 0xf1c40f;
   const rr = (c, a, X, Y, W, H, R) => { g.fillStyle(c, a); g.fillRoundedRect(X, Y, W, H, R); };
   const el = (c, a, X, Y, W, H) => { g.fillStyle(c, a); g.fillEllipse(X, Y, W, H); };
   el(0x000000, 0.35, 0, 118, 150, 26);                                   // ground shadow
@@ -56,9 +56,9 @@ export function heroPortrait(scene, x, y, s = 1) {
   // hair: cap + swept fringe
   g.fillStyle(HAIR); g.slice(0, -100, 33, Math.PI, 0, false); g.fillPath();
   el(HAIR, 1, 0, -122, 60, 30); g.fillStyle(HAIR); g.fillTriangle(-32, -112, 6, -124, -14, -98); g.fillTriangle(32, -112, 10, -124, 24, -100);
-  el(0x4a3324, 0.6, -8, -128, 26, 8);
+  el(0xfde68a, 0.7, -8, -128, 26, 8);
   // face
-  rr(HAIR, 1, -20, -100, 14, 4, 2); rr(HAIR, 1, 6, -100, 14, 4, 2);       // brows
+  rr(0x9a7b2e, 1, -20, -100, 14, 4, 2); rr(0x9a7b2e, 1, 6, -100, 14, 4, 2);       // brows
   el(0xffffff, 1, -13, -90, 13, 12); el(0xffffff, 1, 13, -90, 13, 12);
   el(0x1f2937, 1, -12, -89, 7, 8); el(0x1f2937, 1, 14, -89, 7, 8);
   el(0xffffff, 1, -10.5, -91, 2.6, 2.6); el(0xffffff, 1, 15.5, -91, 2.6, 2.6);
@@ -71,25 +71,44 @@ export function heroPortrait(scene, x, y, s = 1) {
   return scene.add.container(x, y, items).setScale(s);
 }
 
+/** Make any object feel like a button: instant press-in (with a click sound), release fires the action. */
+export function pressable(scene, obj, onClick, opts = {}) {
+  const base = obj.scale, hover = opts.hover ?? 1.03, target = opts.target || obj;
+  let down = false;
+  const to = (v, d = 70) => { scene.tweens.killTweensOf(target); scene.tweens.add({ targets: target, scale: base * v, duration: d, ease: 'Quad.out' }); };
+  obj.on('pointerover', () => { if (!down) to(hover); if (opts.onHover) opts.onHover(true); });
+  obj.on('pointerout', () => { down = false; to(1); if (opts.onHover) opts.onHover(false); });
+  obj.on('pointerdown', () => { down = true; sfx.ensure(); sfx.click(); scene.tweens.killTweensOf(target); target.setScale(base * 0.94); });
+  obj.on('pointerup', () => { if (!down) return; down = false; to(1, 110); if (onClick) onClick(); });
+  return obj;
+}
+
 /** Pill button with hover + press feedback. */
 export function button(scene, x, y, w, h, label, opts = {}) {
   const { color = 0x22c55e, text = '#04170a', size = 20, sub, onClick } = opts;
   const g = scene.add.graphics();
+  const rad = h / 2 > 26 ? 18 : h / 2;
   const draw = (hover) => {
     g.clear();
-    g.fillStyle(0x000000, 0.35); g.fillRoundedRect(-w / 2 + 2, -h / 2 + 5, w, h, h / 2 > 26 ? 18 : h / 2);
-    g.fillStyle(color); g.fillRoundedRect(-w / 2, -h / 2, w, h, h / 2 > 26 ? 18 : h / 2);
-    g.fillStyle(0xffffff, hover ? 0.28 : 0.14); g.fillRoundedRect(-w / 2 + 4, -h / 2 + 4, w - 8, h * 0.42, h / 2 > 26 ? 14 : h * 0.21);
+    g.fillStyle(0x000000, 0.35); g.fillRoundedRect(-w / 2 + 2, -h / 2 + 5, w, h, rad);
+    g.fillStyle(color); g.fillRoundedRect(-w / 2, -h / 2, w, h, rad);
+    g.fillStyle(0x000000, 0.16); g.fillRoundedRect(-w / 2, 0, w, h / 2, { tl: 0, tr: 0, bl: rad, br: rad });
+    g.fillStyle(0xffffff, hover ? 0.3 : 0.16); g.fillRoundedRect(-w / 2 + 4, -h / 2 + 4, w - 8, h * 0.4, Math.min(rad, h * 0.2));
+    if (hover) { g.lineStyle(2, 0xffffff, 0.8); g.strokeRoundedRect(-w / 2, -h / 2, w, h, rad); }
   };
   draw(false);
   const items = [g, scene.add.text(0, sub ? -8 : 0, label, { fontFamily: FONT, fontSize: `${size}px`, color: text }).setOrigin(0.5)];
   if (sub) items.push(scene.add.text(0, size * 0.75, sub, { fontFamily: FONT_R, fontSize: '11px', color: text, letterSpacing: 2 }).setOrigin(0.5).setAlpha(0.7));
   const c = scene.add.container(x, y, items).setSize(w, h).setInteractive({ useHandCursor: true });
-  c.on('pointerover', () => { draw(true); scene.tweens.add({ targets: c, scale: 1.03, duration: 90 }); });
-  c.on('pointerout', () => { draw(false); scene.tweens.add({ targets: c, scale: 1, duration: 90 }); });
-  c.on('pointerdown', () => c.setScale(0.97));
-  c.on('pointerup', () => { c.setScale(1); sfx.ensure(); sfx.click(); if (onClick) onClick(); });
-  return c;
+  return pressable(scene, c, onClick, { onHover: draw });
+}
+
+/** Quick cross-fade to another scene (short, so buttons feel instant). */
+export function goTo(scene, key) {
+  if (scene.leaving) return; scene.leaving = true;
+  scene.input.enabled = false;
+  scene.cameras.main.fadeOut(90, 5, 8, 16);
+  scene.cameras.main.once('camerafadeoutcomplete', () => { scene.leaving = false; scene.scene.start(key); });
 }
 
 /** Dark rounded panel with an optional gold accent bar. */
@@ -108,21 +127,20 @@ export function preloadArt(scene) {
   if (!scene.textures.exists('m_stadium')) scene.load.image('m_stadium', 'game/assets/stadium.png');
 }
 
-/** Night-stadium photo backdrop with a slow drift, darkened so panels read clearly. */
+/** Night-stadium photo backdrop with a slow drift. Returns { img } so the 3D stage can take over from the photo. */
 export function backdrop(scene) {
   const { width: W, height: H } = scene.scale;
+  let img = null;
   if (scene.textures.exists('m_stadium')) {
-    const img = scene.add.image(W / 2, H / 2 - 20, 'm_stadium');
+    img = scene.add.image(W / 2, H / 2 - 20, 'm_stadium').setTint(0x7c8596);
     const sc = Math.max(W / img.width, H / img.height) * 1.1;
     img.setScale(sc);
     scene.tweens.add({ targets: img, scale: sc * 1.07, x: W / 2 + 18, duration: 16000, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
   }
   const g = scene.add.graphics();
-  g.fillStyle(0x050810, 0.5); g.fillRect(0, 0, W, H);
-  g.fillGradientStyle(0x050810, 0x050810, 0x050810, 0x050810, 0.92, 0.92, 0, 0); g.fillRect(0, 0, W, 170);
-  g.fillGradientStyle(0x050810, 0x050810, 0x050810, 0x050810, 0, 0, 0.96, 0.96); g.fillRect(0, H - 260, W, 260);
-  if (scene.textures.exists('m_vignette')) scene.add.image(0, 0, 'm_vignette').setOrigin(0).setDisplaySize(W, H).setBlendMode(Phaser.BlendModes.MULTIPLY);
-  return g;
+  g.fillGradientStyle(0x050810, 0x050810, 0x050810, 0x050810, 0.95, 0.95, 0, 0); g.fillRect(0, 0, W, 190);
+  g.fillGradientStyle(0x050810, 0x050810, 0x050810, 0x050810, 0, 0, 0.96, 0.96); g.fillRect(0, H - 150, W, 150);
+  return { img, g };
 }
 
 /** Shared top bar: logo, title, coins. */

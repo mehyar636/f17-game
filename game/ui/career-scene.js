@@ -3,7 +3,7 @@ import { generateTextures } from '../match/textures.js';
 import { sfx } from '../match/sfx.js';
 import { TIERS, squadNames, teamById, teamsOf } from '../data/teams.js';
 import { ensureCareer, finishSeason, nextFixture, position, ROUNDS, seasonOver, sortedTable } from '../career/league.js';
-import { preloadArt, backdrop, button, crest, panel, topBar } from './widgets.js';
+import { preloadArt, backdrop, button, crest, goTo, panel, topBar } from './widgets.js';
 
 const ord = (n) => n + (['th', 'st', 'nd', 'rd'][n % 10 > 3 || (n % 100 > 10 && n % 100 < 14) ? 0 : n % 10]);
 
@@ -20,7 +20,8 @@ export class CareerScene extends Phaser.Scene {
     const tier = TIERS[c.tier], top = c.tier === TIERS.length - 1;
     const { width: W, height: H } = this.scale;
     this.cameras.main.setBackgroundColor('#050810');
-    this.cameras.main.fadeIn(250, 5, 8, 16);
+    this.leaving = false; this.input.enabled = true;
+    this.cameras.main.fadeIn(140, 5, 8, 16);
     backdrop(this);
     topBar(this, 'CAREER', `${tier.name}   ·   SEASON ${c.season}`, gs.coins || 0);
 
@@ -125,9 +126,5 @@ export class CareerScene extends Phaser.Scene {
     }
   }
 
-  go(key) {
-    if (this.leaving) return; this.leaving = true;
-    this.cameras.main.fadeOut(180, 5, 8, 16);
-    this.cameras.main.once('camerafadeoutcomplete', () => { this.leaving = false; this.scene.start(key); });
-  }
+  go(key) { goTo(this, key); }
 }

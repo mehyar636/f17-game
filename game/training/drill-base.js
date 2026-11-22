@@ -20,6 +20,18 @@ const HUD = 20000;
 export class DrillBase extends Phaser.Scene {
   constructor(key, cfg) { super(key); this.key = key; this.cfg = cfg; }
 
+  init(data) { this.force2d = !!(data && data.force2d); }
+
+  // ─── What the 3D view reads (same shape as the match) ──────────────────────
+  get players() { return [this.player, ...(this.others || [])]; }
+  get state() { return 'play'; }
+  get tier() { return { mood: 'day' }; }
+  get powerups() { return []; }
+  get userTeam() { return 0; }
+  attackDir() { return 1; }
+  cam3d() { return { x: this.player.x * 0.6 + this.ball.x * 0.4, y: this.player.y * 0.6 + this.ball.y * 0.4, dist: 25, h: 11.5 }; }
+  loop3d(p) { if (this.phase === 'done' && p === this.player) return this.resultStars >= 2 ? 'pump' : this.resultStars === 0 ? 'dejected' : null; return undefined; }
+
   preload() {
     if (this.textures.exists('m_grass')) return;
     this.load.image('m_grass', 'game/assets/grass.png');
@@ -29,12 +41,14 @@ export class DrillBase extends Phaser.Scene {
 
   create() {
     generateTextures(this);
+    this.use3d = !this.force2d && !new URLSearchParams(location.search).has('2d');
+    this.view3d = null; this.props3d = []; this.resultStars = -1;
     this.phase = 'ready'; this.timeLeft = this.cfg.duration; this.score = 0; this.combo = 0; this.best = 0;
     this.charging = false; this.power = 0; this.readyT = 3.4; this.lastCount = 4;
     this.flashEms = buildStadium(this, { walls: true }).flashEms;
     buildPitch(this);
 
-    this.player = new Player(this, 0, 7, 'MID', 10, CX, CY);
+    this.player = new Player(this, 0, 9, 'FWD', 17, CX, CY).setIdentity('F17', true);
     this.player.setControlled(true);
     this.ball = new Ball(this, CX + 30, CY);
     this.ball.fire = false;
@@ -48,11 +62,11 @@ export class DrillBase extends Phaser.Scene {
       fire: this.add.particles(0, 0, 'm_fire', { speed: { min: 10, max: 60 }, angle: { min: 0, max: 360 }, lifespan: { min: 220, max: 420 }, scale: { start: 0.55, end: 0.05 }, alpha: { start: 0.9, end: 0 }, tint: [0xffb703, 0xfb5607, 0xffffff], blendMode: 'ADD', quantity: 1, emitting: false }).setDepth(4000),
       confetti: this.add.particles(0, 0, 'm_particle', { speed: { min: 160, max: 560 }, angle: { min: 180, max: 360 }, gravityY: 700, lifespan: { min: 900, max: 1700 }, scale: { start: 0.45, end: 0.1 }, rotate: { min: 0, max: 720 }, tint: [0x22c55e, 0xf1c40f, 0xffffff, 0x60a5fa], quantity: 1, emitting: false }).setDepth(6000),
     };
-    this.puff = (x, y, n = 1) => this.fx.dust.explode(n, x, y);
+    this.puff = (x, y, n = 1) => { if (!this.use3d) this.fx.dust.explode(n, x, y); };
 
     const cam = this.cameras.main;
     cam.setBounds(0, 0, WORLD_W, WORLD_H); cam.setBackgroundColor('#05070c');
-    this.z = Phaser.Math.Clamp(Math.min(this.scale.width / 1050, this.scale.height / 640), 0.65, 2.2);
+    this.z = this.use3d ? 1 : Phaser.Math.Clamp(Math.min(this.scale.width / 1050, this.scale.height / 640), 0.65, 2.2);
     cam.setZoom(this.z);
     // scrollFactor-0 objects are still zoomed: map screen px -> camera-space so the HUD lands exactly on screen
     const W0 = this.scale.width, H0 = this.scale.height, z = this.z;
@@ -67,6 +81,17 @@ export class DrillBase extends Phaser.Scene {
     if (this.input.keyboard) { this.input.keyboard.on('keydown', wake); this.input.keyboard.on('keydown-ESC', () => this.leave('Training')); }
     this.setup();
     this.camC.x = this.player.x; this.camC.y = this.player.y; cam.centerOn(this.camC.x, this.camC.y);
+    if (this.use3d) {
+      // the 2D world is parked off-screen; only the HUD (scrollFactor 0) is drawn over the 3D canvas
+      cam.removeBounds(); cam.setScroll(-60000, -60000); cam.setBackgroundColor('rgba(0,0,0,0)');
+      Object.values(this.fx).forEach((e) => e.setScrollFactor(0).setDepth(HUD - 2));
+      const fallback = (e) => { console.warn('3D drill view unavailable, using 2D:', e); if (this.sys.isActive()) this.scene.restart({ force2d: true }); };
+      import('../match/view3d.js').then(({ View3D }) => {
+        if (!this.sys.isActive()) return;
+        const v = new View3D(this); this.view3d = v; v.loaded.catch(fallback);
+        this.events.once('shutdown', () => { v.destroy(); this.view3d = null; });
+      }).catch(fallback);
+    }
     this.vignette = this.hud(this.add.image(0, 0, 'm_vignette').setOrigin(0).setDisplaySize(this.scale.width, this.scale.height), 0, 0, HUD - 1).setAlpha(0.9).setBlendMode(Phaser.BlendModes.MULTIPLY);
   }
 
@@ -85,7 +110,7 @@ export class DrillBase extends Phaser.Scene {
     this.ball.lastTouch = p;
     this.ball.kick(dx, dy, speed, lift);
     this.ball.fire = fire;
-    p.kickCooldown = 0.38; p.triggerKick(); p.facing = Math.atan2(dy, dx);
+    p.kickCooldown = 0.38; p.triggerKick(speed > 600 || fire ? 'shoot' : 'pass'); p.facing = Math.atan2(dy, dx);
     if (fire) { sfx.superShot(); this.cameras.main.shake(160, 0.006); this.hitStop = 0.08; }
     else sfx.kick(Phaser.Math.Clamp(speed / SHOT_MAX, 0.15, 1));
   }
@@ -105,9 +130,10 @@ export class DrillBase extends Phaser.Scene {
     this.tweens.killTweensOf(this.scoreT);
     this.tweens.add({ targets: this.scoreT, scale: { from: 1.5, to: 1 }, duration: 260, ease: 'Back.out' });
     if (x !== undefined) {
-      this.fx.star.explode(Math.min(16, 4 + n / 20), x, y);
-      const t = this.add.text(x, y - 20, `+${n}`, { fontFamily: FONT, fontSize: '26px', color: '#fde047', stroke: '#000', strokeThickness: 5 }).setOrigin(0.5).setDepth(7000);
-      this.tweens.add({ targets: t, y: y - 70, alpha: 0, duration: 800, ease: 'Cubic.out', onComplete: () => t.destroy() });
+      const q = this.screen(x, y, 2.5);
+      this.fx.star.explode(Math.min(16, 4 + n / 20), q.x, q.y);
+      const t = this.add.text(q.x, q.y - 20, `+${n}`, { fontFamily: FONT, fontSize: this.use3d ? '40px' : '26px', color: '#fde047', stroke: '#000', strokeThickness: 5 }).setOrigin(0.5).setDepth(this.use3d ? HUD : 7000).setScrollFactor(this.use3d ? 0 : 1);
+      this.tweens.add({ targets: t, y: q.y - 70, alpha: 0, duration: 800, ease: 'Cubic.out', onComplete: () => t.destroy() });
     }
     if (label) this.praise(label);
     this.updateStarHud();
@@ -120,6 +146,10 @@ export class DrillBase extends Phaser.Scene {
     this.tweens.add({ targets: this.praiseT, scale: 1, duration: 260, ease: 'Back.out' });
     this.tweens.add({ targets: [this.praiseT, this.praiseSub], alpha: 0, delay: 900, duration: 300 });
   }
+
+  /** World position → where to draw 2D effects (screen px in 3D mode, world px in 2D mode). */
+  screen(x, y, h = 0) { return this.view3d ? this.view3d.project(x, y, h) : this.use3d ? { x: this.scale.width / 2, y: this.scale.height / 2 } : { x, y }; }
+  confettiAt(x, y, n) { if (this.view3d) this.view3d.burstAt(x, y); else if (!this.use3d) this.fx.confetti.explode(n, x, y); }
 
   good(x, y) { this.praise(pick(['NICE!', 'GREAT!', 'AWESOME!', 'SUPER!', 'BRILLIANT!'])); sfx.praise(); void x; void y; }
 
@@ -144,7 +174,7 @@ export class DrillBase extends Phaser.Scene {
     this.praiseT = H(this.add.text(0, 0, '', { fontFamily: FONT, fontSize: '44px', color: '#fde047', stroke: '#1a1200', strokeThickness: 7 }).setOrigin(0.5), w / 2, h * 0.24).setAlpha(0);
     this.praiseSub = H(this.add.text(0, 0, '', { fontFamily: FONT_R, fontSize: '13px', color: '#ffffff', letterSpacing: 3, stroke: '#000', strokeThickness: 3 }).setOrigin(0.5), w / 2, h * 0.24 + 34).setAlpha(0);
     this.countT = H(this.add.text(0, 0, '3', { fontFamily: FONT, fontSize: '140px', color: '#ffffff', stroke: '#000', strokeThickness: 10 }).setOrigin(0.5), w / 2, h / 2, HUD + 1);
-    const back = H(this.add.text(0, 0, 'X  QUIT', { fontFamily: FONT, fontSize: '13px', color: 'rgba(255,255,255,0.7)' }).setOrigin(1, 0), w - 16, 16).setInteractive({ useHandCursor: true });
+    const back = H(this.add.text(0, 0, 'X  QUIT', { fontFamily: FONT, fontSize: '18px', color: '#ffffff', backgroundColor: 'rgba(0,0,0,0.55)', padding: { x: 14, y: 10 } }).setOrigin(1, 0), w - 14, 14).setInteractive({ useHandCursor: true });
     back.on('pointerup', () => this.leave('Training'));
     if (!this.isTouch) H(this.add.text(0, 0, this.cfg.keys || 'WASD  move    SHIFT  sprint    SPACE (hold)  shoot    X  pass    ESC  quit', { fontFamily: FONT_R, fontSize: '11px', color: 'rgba(255,255,255,0.42)' }).setOrigin(0.5, 1), w / 2, h - 8);
     this.updateStarHud();
@@ -172,7 +202,7 @@ export class DrillBase extends Phaser.Scene {
   update(_t, delta) {
     const raw = Math.min(delta / 1000, 0.034);
     this.controls.update(raw);
-    if (this.hitStop > 0) { this.hitStop -= raw; return; }
+    if (this.hitStop > 0) { this.hitStop -= raw; if (this.view3d) this.view3d.update(0); return; }
     const dt = raw;
 
     if (this.phase === 'ready') {
@@ -196,7 +226,7 @@ export class DrillBase extends Phaser.Scene {
 
     if (this.ball.owner === this.player) this.dribble(dt);
     this.ball.update(dt);
-    if (this.ball.fire) { this.fx.fire.emitParticleAt(this.ball.x, this.ball.y - this.ball.z * 0.8, 2); if (this.ball.speed < 260) this.ball.fire = false; }
+    if (this.ball.fire) { if (!this.use3d) this.fx.fire.emitParticleAt(this.ball.x, this.ball.y - this.ball.z * 0.8, 2); if (this.ball.speed < 260) this.ball.fire = false; }
     if (this.phase === 'play' && this.ball.outside() && !this.inRightGoal()) this.onBallOut();
     this.player.integrate(dt);
     this.others && this.others.forEach(o => o.integrate(dt));
@@ -205,7 +235,8 @@ export class DrillBase extends Phaser.Scene {
     const tx = this.player.x * 0.6 + this.ball.x * 0.4, ty = this.player.y * 0.6 + this.ball.y * 0.4;
     const k = Math.min(1, 4.5 * dt);
     this.camC.x += (tx - this.camC.x) * k; this.camC.y += (ty - this.camC.y) * k;
-    this.cameras.main.centerOn(this.camC.x, this.camC.y);
+    if (!this.use3d) this.cameras.main.centerOn(this.camC.x, this.camC.y);
+    if (this.view3d) this.view3d.update(dt);
   }
 
   updateUser(dt) {
@@ -272,7 +303,8 @@ export class DrillBase extends Phaser.Scene {
     rec.best = Math.max(rec.best, this.score); rec.stars = Math.max(rec.stars, stars); rec.plays++;
     gs.data.training[this.cfg.id] = rec;
     gs.addXP(xp); gs.save();
-    if (stars >= 2) { this.fx.confetti.explode(140, this.player.x, this.player.y - 40); sfx.cheer(0.8); }
+    this.resultStars = stars;
+    if (stars >= 2) { this.confettiAt(this.player.x, this.player.y - 40, 140); sfx.cheer(0.8); }
     this.time.delayedCall(700, () => this.showResult({ stars, xp, coins, statLines, isBest, best: rec.best }));
   }
 
@@ -298,9 +330,10 @@ export class DrillBase extends Phaser.Scene {
     items.push(this.add.text(40, 62, `+${r.xp} XP`, { fontFamily: FONT, fontSize: '18px', color: '#86efac' }).setOrigin(0, 0.5));
     items.push(this.add.text(0, 96, r.statLines.length ? r.statLines.join('     ') : 'EARN 2 STARS TO BOOST A STAT', { fontFamily: FONT, fontSize: '15px', color: r.statLines.length ? '#60a5fa' : 'rgba(255,255,255,0.45)' }).setOrigin(0.5));
     const mkBtn = (x, label, color, tc, cb) => {
-      const bg = this.add.graphics(); bg.fillStyle(color); bg.fillRoundedRect(-100, -22, 200, 44, 22);
+      const bg = this.add.graphics(); bg.fillStyle(color); bg.fillRoundedRect(-100, -26, 200, 52, 26);
       const t = this.add.text(0, 0, label, { fontFamily: FONT, fontSize: '15px', color: tc }).setOrigin(0.5);
-      const c = this.add.container(x, 156, [bg, t]).setSize(200, 44).setInteractive({ useHandCursor: true }).on('pointerup', cb)
+      const c = this.add.container(x, 156, [bg, t]).setSize(212, 56).setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => { sfx.ensure(); c.setScale(0.94); }).on('pointerup', () => { c.setScale(1); cb(); })
         .on('pointerover', () => c.setScale(1.05)).on('pointerout', () => c.setScale(1));
       return c;
     };

@@ -23,9 +23,13 @@ export class TouchPad {
       const r = SIZES[name];
       const bg = scene.add.circle(0, 0, r, COLORS[name], 0.82).setStrokeStyle(3, 0xffffff, 0.5);
       const t = scene.add.text(0, 0, LABELS[name], { fontFamily: FONT, fontSize: `${Math.round(r * 0.42)}px`, color: '#ffffff' }).setOrigin(0.5);
-      const c = scene.add.container(0, 0, [bg, t]).setSize(r * 2, r * 2).setInteractive().setScrollFactor(0).setDepth(depth).setScale(this.k);
-      const send = (down) => { sfx.ensure(); bg.setAlpha(down ? 1 : 0.82); c.setScale((down ? 0.92 : 1) * this.k); scene.game.events.emit(EV.TOUCH, { type: 'btn', name, down }); };
-      c.on('pointerdown', () => send(true)); c.on('pointerup', () => send(false)); c.on('pointerout', () => send(false));
+      const c = scene.add.container(0, 0, [bg, t]).setSize(r * 2, r * 2).setInteractive(new Phaser.Geom.Circle(r, r, r + 14), Phaser.Geom.Circle.Contains).setScrollFactor(0).setDepth(depth).setScale(this.k);
+      let by = -1;
+      const send = (down) => { sfx.ensure(); bg.setAlpha(down ? 1 : 0.82); c.setScale((down ? 0.9 : 1) * this.k); scene.game.events.emit(EV.TOUCH, { type: 'btn', name, down }); };
+      c.on('pointerdown', (p) => { by = p.id; send(true); });
+      const up = (p) => { if (by === p.id) { by = -1; send(false); } };
+      c.on('pointerup', up); c.on('pointerout', up); scene.input.on('pointerup', up); scene.input.on('pointerupoutside', up);
+      this.ups = this.ups || []; this.ups.push(up);
       this.btns.push({ c, name });
     });
     this.onDown = (p) => {
@@ -40,8 +44,8 @@ export class TouchPad {
       const m = Math.hypot(dx, dy), R = 58;
       if (m > R) { dx = dx / m * R; dy = dy / m * R; }
       this.joyKnob.setPosition(this.joyBase.x + dx * this.k, this.joyBase.y + dy * this.k);
-      const dead = 0.12;
-      scene.game.events.emit(EV.TOUCH, { type: 'axis', x: Math.abs(dx / R) < dead ? 0 : dx / R, y: Math.abs(dy / R) < dead ? 0 : dy / R });
+      const mag = Math.min(1, m / R), out = mag < 0.14 ? 0 : Math.min(1, (mag - 0.14) / 0.46);
+      scene.game.events.emit(EV.TOUCH, { type: 'axis', x: (dx / (mag * R || 1)) * out, y: (dy / (mag * R || 1)) * out });
     };
     this.onUp = (p) => {
       if (p.id !== this.joyId) return;
@@ -66,6 +70,7 @@ export class TouchPad {
   destroy() {
     const i = this.scene.input;
     i.off('pointerdown', this.onDown); i.off('pointermove', this.onMove); i.off('pointerup', this.onUp); i.off('pointerupoutside', this.onUp);
+    (this.ups || []).forEach((u) => { i.off('pointerup', u); i.off('pointerupoutside', u); });
     this.scene.game.events.emit(EV.TOUCH, { type: 'axis', x: 0, y: 0 });
   }
 }

@@ -34,7 +34,7 @@ export class MatchScene extends Phaser.Scene {
     this.ball.lastTouch = p;
     this.ball.kick(dx, dy, speed, lift);
     p.kickCooldown = 0.38;
-    p.triggerKick();
+    p.triggerKick(speed > 780 || lift > 200 ? 'shoot' : 'pass');
     p.facing = Math.atan2(dy, dx);
     this.receiver = null;
     sfx.kick(Phaser.Math.Clamp(speed / SHOT_MAX, 0.15, 1));
@@ -53,17 +53,32 @@ export class MatchScene extends Phaser.Scene {
     if (p.team === this.userTeam && !mate.isGK) { this.setControlled(mate); this.switchT = 1.4; }
   }
 
-  shoot(p, power, aimY = 0) {
+  shoot(p, power, aimY = 0, aimX = 0) {
     const goal = this.oppGoal(p.team);
     let ty, acc, speed, lift;
+    // aiming away from the goal: the ball goes exactly where you point (clearance / long ball)
+    if (p.controlled && Math.hypot(aimX, aimY) > 0.3) {
+      const m = Math.hypot(aimX, aimY), ax = aimX / m, ay = aimY / m, gd = Math.hypot(goal.x - p.x, goal.y - p.y) || 1;
+      const toGoal = ((goal.x - p.x) * ax + (goal.y - p.y) * ay) / gd;
+      if (toGoal < 0.55 && !this.fireReady) {
+        this.cameras.main.shake(90, 0.0025 * power);
+        this.kick(p, ax, ay, Phaser.Math.Linear(SHOT_MIN, SHOT_MAX, power) * this.user.power, 60 + power * 260);
+        this.showTarget(false); return;
+      }
+    }
     const isSuper = p.controlled && (this.fireReady || (this.kids.superOnFull && power >= 0.98));
     if (p.controlled) {
       // aim assist: pick the corner away from the keeper unless the kid is steering up/down
       const gk = this.players.find(q => q.team !== p.team && q.isGK);
       const corner = gk ? (gk.y > CY ? -1 : 1) : (Math.random() < 0.5 ? -1 : 1);
       const assistY = CY + corner * (GOAL_W / 2 - 30);
-      const wantY = Math.abs(aimY) > 0.3 ? CY + Math.sign(aimY) * (GOAL_W / 2 - 30) : assistY;
-      ty = Phaser.Math.Linear(CY + aimY * GOAL_W * 0.4, wantY, this.kids.aimAssist);
+      let wantY = assistY;
+      if (Math.hypot(aimX, aimY) > 0.3) {
+        // follow the aim: where the pointed line meets the goal line, kept just inside the posts
+        const dxg = goal.x - p.x, hit = Math.abs(aimX) > 0.05 && Math.sign(aimX) === Math.sign(dxg) ? p.y + (aimY / aimX) * dxg : CY + Math.sign(aimY) * GOAL_W;
+        wantY = Phaser.Math.Clamp(hit, CY - GOAL_W / 2 + 26, CY + GOAL_W / 2 - 26);
+      }
+      ty = wantY;
       acc = this.user.accuracy * (1 - this.kids.aimAssist * 0.7);
       ty += (Math.random() - 0.5) * GOAL_W * (0.35 + power * 0.5) * acc;
       speed = Phaser.Math.Linear(SHOT_MIN, SHOT_MAX, power) * this.user.power;
@@ -152,7 +167,8 @@ export class MatchScene extends Phaser.Scene {
     // kids layer state
     this.stars = 0; this.combo = 0; this.pendingPass = null; this.lastShot = null;
     this.powerups = []; this.puSpawnT = 10; this.boostT = 0; this.fireReady = false; this.lastPU = null;
-    this.dashT = 0; this.dashCool = 0;
+    this.dashT = 0; this.dashCool = 0; this.bufPass = 0; this.bufShot = null;
+    this.aim3d = { on: false, x: 0, y: 0, dx: 1, dy: 0, power: 0 };
     this.hintsShown = 0; this.hintCool = 0; this.rubberT = 6; this.coinsEarned = 0;
 
     this.flashEms = buildStadium(this, { walls: this.kids.walls, mood: this.tier.mood }).flashEms;
@@ -207,12 +223,14 @@ export class MatchScene extends Phaser.Scene {
     // 3D broadcast view (loaded on demand; the 2D view stays as the fallback)
     this.view3d = null;
     if (!new URLSearchParams(location.search).has('2d')) {
+      this.cameras.main.setVisible(false);
       import('./view3d.js').then(({ View3D }) => {
         if (!this.sys.isActive()) return;
         const v = new View3D(this);
-        this.view3d = v; this.cameras.main.setVisible(false);
+        this.view3d = v;
+        v.loaded.catch((e) => { console.warn('3D players unavailable, using 2D:', e); v.destroy(); this.view3d = null; this.cameras.main.setVisible(true); });
         this.events.once('shutdown', () => { v.destroy(); this.view3d = null; });
-      }).catch((e) => console.warn('3D view unavailable, using 2D:', e));
+      }).catch((e) => { console.warn('3D view unavailable, using 2D:', e); this.cameras.main.setVisible(true); });
     }
 
     const wake = () => sfx.ensure();
@@ -522,15 +540,23 @@ export class MatchScene extends Phaser.Scene {
     }
 
     const nearBall = dist(p, b) < 48 + this.kids.control && (b.owner === p || b.owner === null) && b.z < 70;
+    this.aim3d.on = hasBall; this.aim3d.x = p.x; this.aim3d.y = p.y; this.aim3d.power = this.charging ? this.power : 0;
+    this.aim3d.dx = moving ? c.axisX : Math.cos(p.facing); this.aim3d.dy = moving ? c.axisY : Math.sin(p.facing);
+    // a loose ball arriving from a teammate: buttons are buffered so first-time passes and shots work
+    const incoming = !b.owner && !nearBall && dist(p, b) < 260 && !!b.lastTouch && b.lastTouch.team === this.userTeam;
+    if (this.bufPass > 0) this.bufPass -= dt;
+    if (this.bufShot && (this.bufShot.t -= dt) <= 0) this.bufShot = null;
+    if (c.passJust && incoming) this.bufPass = 0.45;
+    if (this.bufShot && nearBall) { const pw = this.bufShot.power; this.bufShot = null; this.shoot(p, pw, c.axisY, c.axisX); return; }
     // every button always does something: without the ball SHOOT is a lunge tackle
     if (this.dashCool > 0) this.dashCool -= dt;
     if (this.dashT > 0) this.dashT -= dt;
-    if (c.shootJustDown && !nearBall && !weHaveBall) {
+    if (c.shootJustDown && !nearBall && !weHaveBall && !incoming) {
       if (this.dashCool <= 0) {
         const tx = b.x + b.vx * 0.15 - p.x, ty = b.y + b.vy * 0.15 - p.y, m = Math.hypot(tx, ty) || 1;
         p.vx = (tx / m) * 520; p.vy = (ty / m) * 520; p.facing = Math.atan2(ty, tx);
         this.dashT = 0.3; this.dashCool = 0.9; p.stamina = Math.max(0, p.stamina - 0.08);
-        this.puff(p.x, p.y + 8, 4); sfx.kick(0.25);
+        this.puff(p.x, p.y + 8, 4); sfx.kick(0.25); p.play('slide');
       }
     } else if (c.shootJustDown) { this.charging = true; this.power = 0; }
     if (this.charging) {
@@ -539,22 +565,24 @@ export class MatchScene extends Phaser.Scene {
         this.charging = false;
         if (nearBall) {
           // far from goal, a "shoot" becomes a big forward pass so the button is never useless
-          if (dist(p, goal) > 900 && !this.fireReady) {
+          if (dist(p, goal) > 900 && !this.fireReady && !moving) {
             const mate = bestPass(this, p, this.attackDir(this.userTeam), 0);
             if (mate) this.passTo(p, mate); else this.kick(p, this.attackDir(this.userTeam), c.axisY * 0.4, 700, 120);
-          } else this.shoot(p, Math.max(0.28, this.power), c.axisY);
-        }
+          } else this.shoot(p, Math.max(0.28, this.power), c.axisY, c.axisX);
+        } else if (incoming) this.bufShot = { t: 0.4, power: Math.max(0.45, this.power) };
         this.power = 0;
       }
     }
-    if (c.passJust && nearBall) {
+    if ((c.passJust || this.bufPass > 0) && nearBall) {
+      this.bufPass = 0;
       const dx = moving ? c.axisX : Math.cos(p.facing), dy = moving ? c.axisY : Math.sin(p.facing);
-      const mate = bestPass(this, p, dx, dy) || bestPass(this, p);
-      if (mate) this.passTo(p, mate); else this.kick(p, dx, dy, 480, 0);
+      // pass to the teammate you are pointing at; if nobody is there, play the ball into that space
+      const mate = bestPass(this, p, dx, dy, -Infinity, moving ? 0.8 : 0.5);
+      if (mate) this.passTo(p, mate); else this.kick(p, dx, dy, 620, 0);
     } else if (c.passJust && weHaveBall && b.owner && b.owner !== p && !b.owner.isGK) {
       // PASS while a teammate has it = call for the ball
       this.passTo(b.owner, p); this.praise('PASS IT!', null);
-    } else if (c.passJust && !weHaveBall) {
+    } else if (c.passJust && !weHaveBall && !incoming) {
       // PASS while defending = switch to the next closest player
       const near = this.nearestTo(b.x, b.y, this.userTeam, true, p);
       if (near) { this.setControlled(near); this.switchT = 1.2; sfx.click(); }
@@ -578,7 +606,7 @@ export class MatchScene extends Phaser.Scene {
           const byKid = p.controlled;
           this.takeBall(p);
           b.vx = Math.cos(p.facing) * 90; b.vy = Math.sin(p.facing) * 90;
-          o.kickCooldown = 0.55; sfx.kick(0.2);
+          o.kickCooldown = 0.55; sfx.kick(0.2); o.play('stumble'); if (!lunging) p.play('poke');
           if (byKid) { this.bump('tackles'); this.addStars(1, p.x, p.y - 20); this.praise(pick(['GREAT TACKLE!', 'BALL WON!', 'SUPER DEFENDING!']), null); sfx.praise(); }
           break;
         }
@@ -599,11 +627,11 @@ export class MatchScene extends Phaser.Scene {
       if (kidShot) { this.bump('shotsOn'); this.lastShot = null; }
       if (b.fire || (sp > 980 && Math.random() < 0.5)) {
         b.vx = -b.vx * 0.3; b.vy = (Math.random() < 0.5 ? -1 : 1) * (300 + Math.random() * 220); b.vz = 150; b.fire = false;
-        best.kickCooldown = 0.5; this.pop(b.fire || sp > 980 ? 'WHAT A SAVE!' : 'SAVE!', 'md'); sfx.cheer(0.5); sfx.kick(0.4);
+        best.kickCooldown = 0.5; if (!best.diveT || best.diveT <= 0) best.play('dive', Math.sign(b.vy) || 1); this.pop(b.fire || sp > 980 ? 'WHAT A SAVE!' : 'SAVE!', 'md'); sfx.cheer(0.5); sfx.kick(0.4);
         if (kidShot) this.praise('SO CLOSE!', 'TRY AGAIN!');
         return;
       }
-      this.takeBall(best); best.holdT = 0.9;
+      this.takeBall(best); best.holdT = 0.9; if (sp > 300 && !(best.diveT > 0)) best.play('catch');
       if (sp > 420) { this.pop('SAVE!', 'md'); sfx.cheer(0.45); if (kidShot) this.praise('ON TARGET!', null); }
       return;
     }
@@ -679,7 +707,7 @@ export class MatchScene extends Phaser.Scene {
 
   goal(team) {
     const gs = GS();
-    this.score[team]++;
+    this.score[team]++; this.goalTeam = team;
     this.state = 'goal'; this.stateT = 3.6; this.concededBy = 1 - team;
     const wasFire = this.ball.fire;
     this.ball.vx *= 0.12; this.ball.vy *= 0.12; this.ball.vz = 0; this.ball.fire = false;

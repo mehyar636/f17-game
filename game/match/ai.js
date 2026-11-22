@@ -21,7 +21,7 @@ function laneBlocked(ctx, from, to) {
 }
 
 /** Best pass option for p. prefX/prefY = preferred direction (unit) or undefined. */
-export function bestPass(ctx, p, prefX, prefY, minScore = -Infinity) {
+export function bestPass(ctx, p, prefX, prefY, minScore = -Infinity, cone = 0.15) {
   const dir = ctx.attackDir(p.team);
   let best = null, bs = minScore;
   for (const m of ctx.players) {
@@ -32,8 +32,8 @@ export function bestPass(ctx, p, prefX, prefY, minScore = -Infinity) {
     let s = 0;
     if (prefX !== undefined && prefY !== undefined) {
       const dot = ux * prefX + uy * prefY;
-      if (dot < 0.15) continue;
-      s += dot * 2.2;
+      if (dot < cone) continue;
+      s += dot * (cone > 0.5 ? 6 : 2.2);
     }
     s += (dir * (m.x - p.x)) / 500;
     s += Math.min(openness(ctx, m), 220) / 220;
@@ -169,9 +169,13 @@ function goalkeeper(ctx, p, dt, base) {
     ty = Phaser.Math.Clamp(ball.y + ball.vy * t, CY - GOAL_W / 2 - 20, CY + GOAL_W / 2 + 20);
     tx = lineX + dir * 10;
     speed = p.team === ctx.userTeam ? 540 : ctx.diff.gkDive;
+    // full-stretch dive when the shot is about to arrive away from the body
+    if (p.diveT > 0) p.diveT -= dt;
+    if (!(p.diveT > 0) && t < 0.4 && Math.abs(ty - p.y) > 34 && ball.speed > 500) { p.play('dive', Math.sign(ty - p.y)); p.diveT = 1.3; }
   } else if (inBox && (!owner || owner.team !== p.team) && dist(p, ball) < 240 && ball.speed < 320) {
     tx = ball.x; ty = ball.y; speed = base * 1.15;
   }
+  if (p.diveT > 0 && !coming) p.diveT -= dt;
   p.steer(tx, ty, speed, dt, 10);
   p.lockFacing = true;
   p.facing = dir > 0 ? 0 : Math.PI;

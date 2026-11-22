@@ -14,7 +14,6 @@ const config = {
   width: 1280,
   height: 720,
   parent: 'game-container',
-  backgroundColor: '#050810',
   transparent: true,          // the 3D match canvas (#view3d) shows through during matches
   physics: {
     default: 'arcade',

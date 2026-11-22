@@ -96,7 +96,11 @@ export class Player extends Phaser.GameObjects.Container {
 
   brake(dt) { const k = Math.pow(0.001, dt); this.vx *= k; this.vy *= k; }
 
-  triggerKick() { this.kickAnim = 1; }
+  /** kind: 'pass' | 'shoot' — picks the 3D animation. */
+  triggerKick(kind = 'pass') { this.kickAnim = 1; this.play(kind); }
+
+  /** Ask the 3D view to play a one-shot action (shoot, pass, slide, poke, stumble, dive, catch). */
+  play(name, dir = 0) { this.anim = name; this.animDir = dir; this.animSeq = (this.animSeq || 0) + 1; }
 
   /** Goal celebration: spin + hop for ~1.4 s (handled in animate). */
   celebrate() { this.celebT = 1.4; }

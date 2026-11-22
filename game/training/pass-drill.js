@@ -19,8 +19,10 @@ export class PassDrill extends DrillBase {
       const m = this.makePlayer(0, i + 1, 'MID', [2, 7, 9, 11, 8, 6][i], CX - 200 + ux * 330, CY + uy * 240);
       m.homeX = m.x; m.homeY = m.y; m.ring = this.add.image(m.x, m.y + 4, 'm_ring').setScale(1 / R).setVisible(false).setDepth(1);
       m.arrow = this.add.image(m.x, m.y - 40, 'm_chev').setScale(1.4 / R).setAngle(90).setVisible(false).setDepth(9000);
+      m.prop = { kind: 'mark', p: m, on: false };
       return m;
     });
+    this.props3d = this.mates.map(m => m.prop);
     this.defender = null;
     this.others = [...this.mates];
     this.success = 0; this.passLive = null; this.returnT = 0;
@@ -30,7 +32,7 @@ export class PassDrill extends DrillBase {
   pickTarget() {
     const options = this.mates.filter(m => m !== this.target);
     this.target = options[Math.floor(Math.random() * options.length)];
-    this.mates.forEach(m => { m.ring.setVisible(m === this.target); m.arrow.setVisible(m === this.target); });
+    this.mates.forEach(m => { m.ring.setVisible(m === this.target); m.arrow.setVisible(m === this.target); m.prop.on = m === this.target; });
   }
 
   onPass(dx, dy) {
@@ -49,6 +51,8 @@ export class PassDrill extends DrillBase {
   }
 
   onShoot(_power, aimY) { this.onPass(Math.cos(this.player.facing), Math.abs(aimY) > 0.3 ? aimY : Math.sin(this.player.facing)); }
+
+  cam3d() { return { x: CX - 200, y: CY + (this.player.y - CY) * 0.25 + 40, dist: 44, h: 22 }; }
 
   onBallOut() { this.resetBallToPlayer(); if (this.passLive) { this.passLive = null; this.combo = 0; this.praise('TOO HARD!', 'EASY DOES IT'); } }
 
@@ -104,7 +108,7 @@ export class PassDrill extends DrillBase {
       this.returnT -= dt;
       if (this.returnT <= 0 && this.returner) {
         const m = this.returner, d = dist(m, p);
-        b.place(m.x, m.y); b.lastTouch = m; m.triggerKick();
+        b.place(m.x, m.y); b.lastTouch = m; m.triggerKick('pass');
         b.kick(p.x + p.vx * 0.3 - m.x, p.y + p.vy * 0.3 - m.y, Phaser.Math.Clamp(d * 1.5, 380, 700), 0);
         sfx.kick(0.3); this.returner = null;
       }

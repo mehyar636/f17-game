@@ -423,9 +423,13 @@ export class View3D {
       if (p.lockFacing) { const cf = Math.cos(p.facing), sf = Math.sin(p.facing); speed = Math.abs(p.vx * cf + p.vy * sf); strafe = p.vx * sf - p.vy * cf; }
       fig.update(dt, { x: X(p.x), z: Z(p.y), speed, strafe, yaw, look: { x: bx0, z: bz0 }, stance, charge: p.controlled && m.charging ? 0.4 + 0.6 * (m.power || 0) : 0 });
       const px = fig.root.position.x, pz = fig.root.position.z, lift = Math.max(0, fig.baseY);
+      // goal close-up: anyone standing right in front of the lens (other than the scorer) would fill the frame
+      fig.root.visible = !(goal && p !== scorer && Math.hypot(this.cam.position.x - px, this.cam.position.z - pz) < 4.5);
+      f.blob.visible = fig.root.visible;
       f.blob.position.set(px, 0.04, pz); f.blob.scale.setScalar(2.5 - Math.min(1, lift) * 0.8);
-      const show = p.controlled || p.hero;
+      const show = (p.controlled || p.hero) && !goal;      // no floating labels in the close-up goal camera
       f.tag.visible = show; if (show) f.tag.position.set(px, PLAYER_H + 1.15 + lift, pz);
+      if (f.star) f.star.visible = !goal;
       if (f.star) f.star.position.set(px, PLAYER_H + 2.1 + lift + Math.sin(this.t * 4) * 0.12, pz);
       if (p.controlled) ctl = f;
     }

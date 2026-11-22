@@ -144,18 +144,18 @@ export class UIScene extends Phaser.Scene {
       },
     };
     Object.entries(h).forEach(([k, fn]) => ev.on(k, fn));
-    const reset = () => { this.ftPanel.setVisible(false); this.lastScore = [0, 0]; this.scoreT.setText('0 - 0'); };
+    const reset = () => { this.ftPanel.setVisible(false); this.sideDim(false); this.lastScore = [0, 0]; this.scoreT.setText('0 - 0'); };
     this.events.on('reset', reset);
-    this.events.once('shutdown', () => { Object.entries(h).forEach(([k, fn]) => ev.off(k, fn)); this.scale.off('resize', this.layout, this); this.events.off('reset', reset); });
+    this.events.once('shutdown', () => { Object.entries(h).forEach(([k, fn]) => ev.off(k, fn)); this.scale.off('resize', this.layout, this); this.events.off('reset', reset); this.sideDim(false, true); });
     if (this.input.keyboard) this.input.keyboard.on('keydown-ENTER', () => { if (this.ftPanel.visible) this.toMenu('Career'); });
   }
 
-  restart() { sfx.click(); this.ftPanel.setVisible(false); this.lastScore = [0, 0]; this.game.events.emit(EV.RESTART); }
-  toMenu(key) { sfx.click(); this.ftPanel.setVisible(false); this.game.events.emit(EV.MENU, key); }
+  restart() { sfx.click(); this.sideDim(false); this.ftPanel.setVisible(false); this.lastScore = [0, 0]; this.game.events.emit(EV.RESTART); }
+  toMenu(key) { sfx.click(); this.sideDim(false, true); this.ftPanel.setVisible(false); this.game.events.emit(EV.MENU, key); }
 
   radarOrigin() {
     const { width: w, height: h } = this.scale;
-    return { x0: w - 16 - this.radarW, y0: h - 16 - this.radarH - (this.isTouch ? 170 : 0) };
+    return { x0: w - 16 - this.radarW, y0: h - 16 - this.radarH - (this.isTouch ? 236 : 0) };   // clear of the SWITCH / SPRINT buttons
   }
 
   layout() {
@@ -209,8 +209,8 @@ export class UIScene extends Phaser.Scene {
     this.objTitle.setPosition(ox + 12, oy + 7);
     this.objRows.forEach((r, i) => { const ry = oy + 32 + i * 21; r.box.setPosition(ox + 12, ry); r.txt.setPosition(ox + 30, ry).setFontSize(compact ? 13 : 15); r.prog.setPosition(ox + ow - 10, ry); });
     // praise pop, above the big pop
-    this.praiseT.setPosition(w / 2, h * 0.22);
-    this.praiseSub.setPosition(w / 2, h * 0.22 + 34);
+    this.praiseT.setPosition(w / 2, h * 0.18);
+    this.praiseSub.setPosition(w / 2, h * 0.18 + 34);
 
     const pw = 180, px = w / 2 - pw / 2, py = h - (this.isTouch ? 200 : 70);
     this.powBg.clear();
@@ -259,7 +259,7 @@ export class UIScene extends Phaser.Scene {
     this.praiseSub.setText(p.sub || '').setAlpha(p.sub ? 1 : 0);
     this.tweens.add({ targets: this.praiseT, scale: 1, duration: 260, ease: 'Back.out' });
     this.tweens.add({ targets: this.praiseT, y: this.praiseT.y - 10, duration: 900, ease: 'Sine.out', yoyo: false });
-    this.tweens.add({ targets: [this.praiseT, this.praiseSub], alpha: 0, delay: 1000, duration: 300, onComplete: () => this.praiseT.setY(this.scale.height * 0.22) });
+    this.tweens.add({ targets: [this.praiseT, this.praiseSub], alpha: 0, delay: 1000, duration: 300, onComplete: () => this.praiseT.setY(this.scale.height * 0.18) });
   }
 
   // ─── Match intro: team blocks slide in, VS badge, week / difficulty ───────
@@ -327,7 +327,7 @@ export class UIScene extends Phaser.Scene {
     const b1 = mkBtn(-125, 'CONTINUE', 0x22c55e, '#04170a', () => this.toMenu('Career'));
     const b2 = mkBtn(125, 'MAIN MENU', 0x1f2937, '#ffffff', () => this.toMenu('Menu'));
     // vertical layout inside a 600×460 card (y from -230 to 230)
-    this.ftTitle.setY(-206); this.ftNames.setY(-130); this.ftRes.setY(-86); this.ftScore.setY(-30);
+    this.ftTitle.setY(-200); this.ftNames.setY(-130); this.ftRes.setY(-86); this.ftScore.setY(-30);
     this.ftInfo.setY(22); this.ftRating.setY(46);
     this.ftStars.forEach((s, i) => s.setPosition(-64 + i * 64, -168));
     this.ftCoinIcon.setPosition(-46, 104); this.ftCoins.setPosition(-30, 104);
@@ -366,11 +366,29 @@ export class UIScene extends Phaser.Scene {
     });
     this.ftPanel.setVisible(true).setAlpha(0);
     this.tweens.add({ targets: this.ftPanel, alpha: 1, duration: 500, delay: 1200 });
+    this.time.delayedCall(1200, () => { if (this.ftPanel.visible) this.sideDim(true); });
+    this.time.delayedCall(1200, () => sfx.result(!!r.won));
+  }
+
+  /**
+   * The 3D pitch fills the whole window but the HUD canvas is 16:9, so on wide phones the
+   * full-time dim would stop short of the screen edges. Two DOM strips cover the gap.
+   */
+  sideDim(on, remove = false) {
+    const r = this.game.canvas.getBoundingClientRect(), W = window.innerWidth;
+    this.dims = this.dims || ['left', 'right'].map(() => { const d = document.createElement('div'); d.className = 'side-dim'; document.body.appendChild(d); return d; });
+    this.dims[0].style.left = '0'; this.dims[0].style.width = `${Math.max(0, r.left)}px`;
+    this.dims[1].style.right = '0'; this.dims[1].style.width = `${Math.max(0, W - r.right)}px`;
+    this.dims.forEach(d => { d.style.opacity = on ? '1' : '0'; });
+    if (remove) { this.dims.forEach(d => d.remove()); this.dims = null; }
   }
 
   buildTouch() {
-    this.joyBase = this.add.circle(0, 0, 58, 0xffffff, 0.12).setStrokeStyle(2, 0xffffff, 0.35).setVisible(false);
-    this.joyKnob = this.add.circle(0, 0, 26, 0xffffff, 0.5).setVisible(false);
+    // the stick is always on screen at its home spot (bottom-left) so kids can see where to steer;
+    // it jumps under the thumb wherever the left half is touched and goes home on release
+    this.joyBase = this.add.circle(0, 0, 58, 0xffffff, 0.18).setStrokeStyle(2, 0xffffff, 0.35);
+    this.joyKnob = this.add.circle(0, 0, 26, 0xffffff, 0.5);
+    this.joyHome = () => { const hx = 126, hy = this.scale.height - 104; this.joyBase.setPosition(hx, hy).setAlpha(0.85); this.joyKnob.setPosition(hx, hy).setAlpha(0.85); };
     const mkBtn = (name, label, r, color) => {
       const bg = this.add.circle(0, 0, r, color, 0.82).setStrokeStyle(3, 0xffffff, 0.5);
       const t = this.add.text(0, 0, label, { fontFamily: FONT, fontSize: `${Math.round(r * 0.36)}px`, color: '#ffffff' }).setOrigin(0.5);
@@ -389,7 +407,7 @@ export class UIScene extends Phaser.Scene {
     this.input.on('pointerdown', (p) => {
       if (p.x > this.scale.width * 0.5 || this.joyId !== -1 || this.ftPanel.visible) return;
       sfx.ensure(); this.joyId = p.id;
-      this.joyBase.setPosition(p.x, p.y).setVisible(true); this.joyKnob.setPosition(p.x, p.y).setVisible(true);
+      this.joyBase.setPosition(p.x, p.y).setAlpha(1); this.joyKnob.setPosition(p.x, p.y).setAlpha(1);
     });
     this.input.on('pointermove', (p) => {
       if (p.id !== this.joyId) return;
@@ -403,7 +421,7 @@ export class UIScene extends Phaser.Scene {
     });
     const end = (p) => {
       if (p.id !== this.joyId) return;
-      this.joyId = -1; this.joyBase.setVisible(false); this.joyKnob.setVisible(false);
+      this.joyId = -1; this.joyHome();
       this.game.events.emit(EV.TOUCH, { type: 'axis', x: 0, y: 0 });
     };
     this.input.on('pointerup', end); this.input.on('pointerupoutside', end);
@@ -414,5 +432,6 @@ export class UIScene extends Phaser.Scene {
     const { width: w, height: h } = this.scale;
     const pos = { shoot: [w - 72, h - 84], pass: [w - 170, h - 60], sprint: [w - 150, h - 150], switch: [w - 62, h - 186] };
     this.btns.forEach(b => b.c.setPosition(pos[b.name][0], pos[b.name][1]));
+    if (this.joyId === -1 && this.joyHome) this.joyHome();
   }
 }

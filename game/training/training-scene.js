@@ -128,7 +128,7 @@ export class TrainingScene extends Phaser.Scene {
   buy(key, valText) {
     const gs = GameState.data, v = gs.stats[key], c = cost(v);
     if (v >= 99) return;
-    if ((gs.coins || 0) < c) { this.say(`NOT ENOUGH COINS — PLAY A MATCH OR A DRILL TO EARN MORE`, '#fca5a5'); sfx.wall(); return; }
+    if ((gs.coins || 0) < c) { this.say(`NOT ENOUGH COINS — PLAY A MATCH OR A DRILL TO EARN MORE`, '#fca5a5'); sfx.deny(); return; }
     gs.coins -= c; gs.stats[key] = v + 1;
     // overall rating follows the average of the six stats (never drops)
     const avg = Math.round(Object.values(gs.stats).reduce((a, b) => a + b, 0) / 6);

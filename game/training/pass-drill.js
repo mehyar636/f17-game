@@ -80,7 +80,7 @@ export class PassDrill extends DrillBase {
       this.defender.steer(mx, my, 150, dt, 4);
       if (this.passLive && dist(this.defender, b) < 30 && !b.owner) {
         b.vx *= -0.3; b.vy *= 0.3; this.passLive = null; this.combo = 0;
-        this.praise('BLOCKED!', 'PASS AROUND THE DEFENDER'); sfx.wall();
+        this.praise('BLOCKED!', 'PASS AROUND THE DEFENDER'); sfx.deny();
       }
     }
     // a live pass arriving at a teammate
@@ -99,7 +99,7 @@ export class PassDrill extends DrillBase {
           if (this.success === 6) this.praise('TARGETS ARE MOVING!', 'WATCH THE GOLD RING');
           if (this.success === 9 && !this.defender) this.spawnDefender();
           this.pickTarget();
-        } else { this.combo = 0; this.addScore(20, to.x, to.y - 20); this.praise('WRONG PLAYER!', 'LOOK FOR THE GOLD RING'); sfx.wall(); }
+        } else { this.combo = 0; this.addScore(20, to.x, to.y - 20); this.praise('WRONG PLAYER!', 'LOOK FOR THE GOLD RING'); sfx.deny(); }
         // return pass after a beat
         this.returnT = 0.55; this.returner = to;
       } else if (this.passLive.t <= 0 || b.speed < 30) { this.passLive = null; this.combo = 0; this.praise('NOT QUITE', 'AIM WITH THE STICK, THEN PASS'); }

@@ -80,7 +80,7 @@ export class DribbleDrill extends DrillBase {
           this.tweens.add({ targets: c, angle: { from: -25, to: 25 }, duration: 90, yoyo: true, repeat: 3 });
           c.setTint(0xef4444);
           this.score = Math.max(0, this.score - 25); this.scoreT.setText(String(this.score)); this.updateStarHud();
-          this.praise('OOPS! CONE!', '-25'); sfx.wall();
+          this.praise('OOPS! CONE!', '-25'); sfx.deny();
         }
       });
       // through the gate?
@@ -94,7 +94,7 @@ export class DribbleDrill extends DrillBase {
         else this.highlight();
       } else if (b.x > g.x + 90) {
         // skipped the gate
-        g.done = true; this.praise('MISSED GATE', 'GO THROUGH THE GOLD ONE'); sfx.wall();
+        g.done = true; this.praise('MISSED GATE', 'GO THROUGH THE GOLD ONE'); sfx.deny();
         this.current++;
         if (this.current >= this.gates.length) { this.finishLive = true; g.props[0].cur = false; g.props[0].done = true; this.praise('NOW SHOOT!', 'HOLD SPACE / SHOOT'); }
         else this.highlight();

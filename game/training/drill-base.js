@@ -342,6 +342,7 @@ export class DrillBase extends Phaser.Scene {
     // one container centred on screen, mapped through the zoom
     const panel = this.hud(this.add.container(0, 0, items), w / 2, h / 2, D).setAlpha(0);
     this.tweens.add({ targets: panel, alpha: 1, duration: 350 });
+    sfx.result(r.stars >= 2);
     stars.forEach((s, i) => { if (i < r.stars) this.time.delayedCall(600 + i * 350, () => { s.setTint(0xfacc15); this.tweens.add({ targets: s, scale: { from: 2, to: 1.2 }, angle: { from: -30, to: 0 }, duration: 380, ease: 'Back.out' }); sfx.star(); }); });
     if (this.input.keyboard) this.input.keyboard.once('keydown-ENTER', () => this.scene.restart());
   }

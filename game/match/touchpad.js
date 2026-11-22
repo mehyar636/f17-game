@@ -17,8 +17,8 @@ export class TouchPad {
   constructor(scene, buttons = ['shoot', 'pass', 'sprint'], depth = 20000, opts = {}) {
     this.scene = scene; this.joyId = -1; this.btns = [];
     this.map = opts.map || ((x, y) => ({ x, y })); this.k = opts.scale || 1;
-    this.joyBase = scene.add.circle(0, 0, 58, 0xffffff, 0.12).setStrokeStyle(2, 0xffffff, 0.35).setVisible(false).setScrollFactor(0).setDepth(depth).setScale(this.k);
-    this.joyKnob = scene.add.circle(0, 0, 26, 0xffffff, 0.5).setVisible(false).setScrollFactor(0).setDepth(depth).setScale(this.k);
+    this.joyBase = scene.add.circle(0, 0, 58, 0xffffff, 0.18).setStrokeStyle(2, 0xffffff, 0.35).setScrollFactor(0).setDepth(depth).setScale(this.k);
+    this.joyKnob = scene.add.circle(0, 0, 26, 0xffffff, 0.5).setScrollFactor(0).setDepth(depth).setScale(this.k);
     buttons.forEach(name => {
       const r = SIZES[name];
       const bg = scene.add.circle(0, 0, r, COLORS[name], 0.82).setStrokeStyle(3, 0xffffff, 0.5);
@@ -36,7 +36,7 @@ export class TouchPad {
       if (p.x > scene.scale.width * 0.5 || this.joyId !== -1 || this.locked) return;
       sfx.ensure(); this.joyId = p.id; this.joyOrigin = { x: p.x, y: p.y };
       const q = this.map(p.x, p.y);
-      this.joyBase.setPosition(q.x, q.y).setVisible(true); this.joyKnob.setPosition(q.x, q.y).setVisible(true);
+      this.joyBase.setPosition(q.x, q.y).setAlpha(1); this.joyKnob.setPosition(q.x, q.y).setAlpha(1);
     };
     this.onMove = (p) => {
       if (p.id !== this.joyId) return;
@@ -49,7 +49,7 @@ export class TouchPad {
     };
     this.onUp = (p) => {
       if (p.id !== this.joyId) return;
-      this.joyId = -1; this.joyBase.setVisible(false); this.joyKnob.setVisible(false);
+      this.joyId = -1; this.home();
       scene.game.events.emit(EV.TOUCH, { type: 'axis', x: 0, y: 0 });
     };
     scene.input.on('pointerdown', this.onDown); scene.input.on('pointermove', this.onMove);
@@ -59,12 +59,19 @@ export class TouchPad {
   }
 
   /** Disable the joystick (e.g. while a result card is open). */
-  setLocked(v) { this.locked = v; }
+  setLocked(v) { this.locked = v; this.joyBase.setVisible(!v); this.joyKnob.setVisible(!v); }
+
+  /** Park the stick at its always-visible home spot, bottom-left. */
+  home() {
+    const q = this.map(126, this.scene.scale.height - 104);
+    this.joyBase.setPosition(q.x, q.y).setAlpha(0.85); this.joyKnob.setPosition(q.x, q.y).setAlpha(0.85);
+  }
 
   layout() {
     const { width: w, height: h } = this.scene.scale;
     const pos = { shoot: [w - 72, h - 84], pass: [w - 170, h - 60], sprint: [w - 150, h - 150], switch: [w - 62, h - 186] };
     this.btns.forEach(b => { const q = this.map(pos[b.name][0], pos[b.name][1]); b.c.setPosition(q.x, q.y); });
+    if (this.joyId === -1) this.home();
   }
 
   destroy() {
